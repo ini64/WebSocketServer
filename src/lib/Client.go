@@ -62,10 +62,10 @@ var ClientPool = sync.Pool{
 
 //Make 처음 생성시
 func (c *Client) Make() {
-	c.SyncSenderStart = make(chan bool)
-	c.SyncSenderEnd = make(chan bool)
-	c.SyncSessionStart = make(chan bool)
-	c.SyncSessionEnd = make(chan bool)
+	c.SyncSenderStart = make(chan bool, 2)
+	c.SyncSenderEnd = make(chan bool, 2)
+	c.SyncSessionStart = make(chan bool, 2)
+	c.SyncSessionEnd = make(chan bool, 2)
 	c.SendListSize = 8
 	c.SendList = make(chan interface{}, c.SendListSize)
 }
@@ -77,22 +77,15 @@ func (c *Client) Reset() {
 	c.GameUID = 0
 	c.Transferable = 0
 
-	//동기화에 문제 있을까봐 채널 정리
-	if len(c.SyncSenderStart) == 1 {
-		<-c.SyncSenderStart
-	}
+	close(c.SyncSenderStart)
+	close(c.SyncSenderEnd)
+	close(c.SyncSessionStart)
+	close(c.SyncSessionStart)
 
-	if len(c.SyncSenderEnd) == 1 {
-		<-c.SyncSenderEnd
-	}
-
-	if len(c.SyncSessionStart) == 1 {
-		<-c.SyncSessionStart
-	}
-
-	if len(c.SyncSessionEnd) == 1 {
-		<-c.SyncSessionEnd
-	}
+	c.SyncSenderStart = make(chan bool, 2)
+	c.SyncSenderEnd = make(chan bool, 2)
+	c.SyncSessionStart = make(chan bool, 2)
+	c.SyncSessionEnd = make(chan bool, 2)
 
 	//닫고 해야 Lock이 안걸림
 	close(c.SendList)
