@@ -35,69 +35,76 @@ func (e *EndPoint) SessionParser(ctx context.Context, clients map[uint64]*Client
 	exit = false
 
 	select {
-	case ss := <-e.SessionChannel:
-		switch x := ss.(type) {
+	case recvMessage := <-e.SessionChannel:
+		switch message := recvMessage.(type) {
 
 		case *SessionEnter:
-			gameUID := x.Client.GameUID
+			gameUID := message.Client.GameUID
 			client, ok := clients[gameUID]
 			if ok {
-				client.Cancel()
-				client.SyncSessionEnd <- true
+				//클라가 소켓 끊을 수 있도록 패킷 전송
+				scEnterSecond := Packet.GetSCEnterSecond()
+				client.Send(scEnterSecond)
 			}
-			clients[gameUID] = x.Client
 
+			//세션에 등록
+			clients[gameUID] = message.Client
+
+			//세션 등록 완료 메세지 보내기
 			csEnterAck := Packet.GetCSEnterAck()
-			x.Client.Send(csEnterAck)
+			message.Client.Send(csEnterAck)
 
-			x.Client.SyncSessionStart <- true
+			//대기 중인 스레드에게 시그널
+			message.Client.SyncSessionStart <- true
 
 			atomic.StoreInt64(&e.TotalCount, int64(len(clients)))
 
-			x.Release()
+			message.Release()
 
 		case *SessionLeave:
-			gameUID := x.Client.GameUID
+			gameUID := message.Client.GameUID
 			client, ok := clients[gameUID]
-			if ok && client == x.Client {
-				delete(clients, gameUID)
-				client.Cancel()
-				client.SyncSessionEnd <- true
-			} else {
-				x.Client.Cancel()
-				x.Client.SyncSessionEnd <- true
+			if ok {
+				//등록된 클라이언트가 종료를 요청한다면
+				if client == message.Client {
+					delete(clients, gameUID)
+				}
 			}
+
+			//스레드 종료하라고 시그널
+			message.Client.Cancel()
+			//대기중인 스레드에게 시그널
+			message.Client.SyncSessionEnd <- true
+
 			atomic.StoreInt64(&e.TotalCount, int64(len(clients)))
 
-			x.Release()
+			message.Release()
 
 		case *Broadcast:
-			gameUID := x.Client.GameUID
+			gameUID := message.Client.GameUID
 			count := int(0)
 
 			client, ok := clients[gameUID]
 			if ok {
-				if client == x.Client {
-					for otherGameUID, client := range clients {
+				if client == message.Client {
+					//나 외의 다른 클라이언트 찾기
+					for otherGameUID, otherClient := range clients {
 						if gameUID != otherGameUID {
 
 							scBroadcast := Packet.GetSCBroadcast()
-							scBroadcast.Message = x.Message
-							client.Send(scBroadcast)
+							scBroadcast.Message = message.Message
+							otherClient.Send(scBroadcast)
 							count++
 						}
-						if count > 3 {
-							break
-						}
 					}
-
+					//완료 시그널 보내기
 					csBroadcastAck := Packet.GetCSBroadcastAck()
 					client.Send(csBroadcastAck)
 				}
 			}
 			atomic.StoreInt64(&e.TotalCount, int64(len(clients)))
 
-			x.Release()
+			message.Release()
 		}
 
 	case <-ctx.Done():

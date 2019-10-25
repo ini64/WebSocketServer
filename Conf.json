@@ -1,0 +1,5 @@
+{
+  "WSBind": "7000",
+  "RedisAddr": "0.0.0.0:6379",
+  "RedisPassword": ""
+}

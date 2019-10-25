@@ -112,20 +112,43 @@ func (v *SC_Broadcast) Release() {
 	SCBroadcastPool.Put(v)
 }
 
+//SCEnterSecondPool SCEnterSecondPool
+var SCEnterSecondPool = sync.Pool{
+	// New is called when a new instance is needed
+	New: func() interface{} {
+		return new(SC_Enter_Second)
+	},
+}
+
+// GetSCEnterSecond GetSCEnterSecond
+func GetSCEnterSecond() *SC_Enter_Second {
+	return SCEnterSecondPool.Get().(*SC_Enter_Second)
+}
+
+//Release Release
+func (v *SC_Enter_Second) Release() {
+	SCEnterSecondPool.Put(v)
+}
+
 //Release 메모리 반환
 func Release(v interface{}) {
 	switch packet := v.(type) {
 	case *Header:
 		packet.Release()
+
 	case *CS_Enter:
 		packet.Release()
 	case *CS_Enter_Ack:
 		packet.Release()
+	case *SC_Enter_Second:
+		packet.Release()
+
 	case *CS_Broadcast:
 		packet.Release()
 	case *CS_Broadcast_Ack:
 		packet.Release()
 	case *SC_Broadcast:
 		packet.Release()
+
 	}
 }

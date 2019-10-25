@@ -4,6 +4,7 @@ import (
 	"Packet"
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -80,7 +81,7 @@ func (c *Client) Reset() {
 	close(c.SyncSenderStart)
 	close(c.SyncSenderEnd)
 	close(c.SyncSessionStart)
-	close(c.SyncSessionStart)
+	close(c.SyncSessionEnd)
 
 	c.SyncSenderStart = make(chan bool, 2)
 	c.SyncSenderEnd = make(chan bool, 2)
@@ -139,7 +140,7 @@ func (e *EndPoint) NewClient(conn *websocket.Conn, slowy chan bool) {
 
 	var (
 		gameUID uint64
-		//Token   string
+		seq     uint32
 	)
 
 	client := ClientPool.Get().(*Client)
@@ -192,11 +193,27 @@ func (e *EndPoint) NewClient(conn *websocket.Conn, slowy chan bool) {
 	switch message := v.(type) {
 	case *Packet.CS_Enter:
 		gameUID = uint64(message.GameUID)
+		seq = message.SEQ
 		//Token = message.Token
 	}
 	Packet.Release(v)
 
 	if gameUID == 0 {
+		return
+	}
+
+	seqKey := fmt.Sprintf("seq:%d", gameUID)
+	val, err := e.RedisClient.Get(seqKey).Result()
+	if err != nil {
+		return
+	}
+
+	dbSeq, err := strconv.ParseUint(val, 10, 32)
+	if err != nil {
+		return
+	}
+
+	if uint32(dbSeq) != seq {
 		return
 	}
 

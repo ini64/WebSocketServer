@@ -185,6 +185,14 @@ func WriteWS(ctx context.Context, c *websocket.Conn, v interface{}, counter *int
 		}
 		return wspb.Write(ctx, c, packet)
 
+	case *Packet.SC_Enter_Second:
+		header.Type = Packet.Header_SC_Enter_Second
+		err := wspb.Write(ctx, c, header)
+		if err != nil {
+			return err
+		}
+		return wspb.Write(ctx, c, packet)
+
 	case *Packet.CS_Broadcast:
 		header.Type = Packet.Header_CS_Broadcast
 		err := wspb.Write(ctx, c, header)
@@ -208,46 +216,11 @@ func WriteWS(ctx context.Context, c *websocket.Conn, v interface{}, counter *int
 			return err
 		}
 		return wspb.Write(ctx, c, packet)
+
 	}
 
 	return errors.New("not support type")
 }
-
-// func Read(ctx context.Context, c *websocket.Conn, v proto.Message) error {
-// 	err := read(ctx, c, v)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to read protobuf: %w", err)
-// 	}
-// 	return nil
-// }
-
-// func read(ctx context.Context, c *websocket.Conn, v proto.Message) error {
-// 	typ, r, err := c.Reader(ctx)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	if typ != websocket.MessageBinary {
-// 		c.Close(websocket.StatusUnsupportedData, "can only accept binary messages")
-// 		return fmt.Errorf("unexpected frame type for protobuf (expected %v): %v", websocket.MessageBinary, typ)
-// 	}
-
-// 	b := Get()
-// 	defer Put(b)
-
-// 	_, err = b.ReadFrom(r)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	fmt.Println("pb read", hex.EncodeToString(b.Bytes()))
-// 	err = proto.Unmarshal(b.Bytes(), v)
-// 	if err != nil {
-// 		c.Close(websocket.StatusInvalidFramePayloadData, "failed to unmarshal protobuf")
-// 		return fmt.Errorf("failed to unmarshal protobuf: %w", err)
-// 	}
-
-// 	return nil
-// }
 
 //ReadWS 데이터 읽기
 func ReadWS(ctx context.Context, c *websocket.Conn, counter *int64) (interface{}, error) {
