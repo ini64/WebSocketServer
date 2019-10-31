@@ -158,7 +158,7 @@ func (e *EndPoint) WSListener() {
 // }
 
 //WriteWS 데이터 쓰기
-func WriteWS(ctx context.Context, c *websocket.Conn, v interface{}, counter *int64) error {
+func WriteWS(ctx context.Context, c *websocket.Conn, v interface{}, counter *int64, gameUID uint64) error {
 	if counter != nil {
 		defer atomic.AddInt64(counter, 2)
 	}
@@ -169,13 +169,6 @@ func WriteWS(ctx context.Context, c *websocket.Conn, v interface{}, counter *int
 	defer Packet.Release(header)
 
 	switch packet := v.(type) {
-	case *Packet.CS_Enter:
-		header.Type = Packet.Header_CS_Enter
-		err := wspb.Write(ctx, c, header)
-		if err != nil {
-			return err
-		}
-		return wspb.Write(ctx, c, packet)
 
 	case *Packet.CS_Enter_Ack:
 		header.Type = Packet.Header_CS_Enter_Ack
@@ -183,6 +176,8 @@ func WriteWS(ctx context.Context, c *websocket.Conn, v interface{}, counter *int
 		if err != nil {
 			return err
 		}
+		Packet.Log(gameUID, "CS_Enter_Ack", v)
+
 		return wspb.Write(ctx, c, packet)
 
 	case *Packet.SC_Enter_Second:
@@ -191,14 +186,8 @@ func WriteWS(ctx context.Context, c *websocket.Conn, v interface{}, counter *int
 		if err != nil {
 			return err
 		}
-		return wspb.Write(ctx, c, packet)
+		Packet.Log(gameUID, "SC_Enter_Second", v)
 
-	case *Packet.CS_Broadcast:
-		header.Type = Packet.Header_CS_Broadcast
-		err := wspb.Write(ctx, c, header)
-		if err != nil {
-			return err
-		}
 		return wspb.Write(ctx, c, packet)
 
 	case *Packet.CS_Broadcast_Ack:
@@ -207,6 +196,8 @@ func WriteWS(ctx context.Context, c *websocket.Conn, v interface{}, counter *int
 		if err != nil {
 			return err
 		}
+		Packet.Log(gameUID, "CS_Broadcast_Ack", v)
+
 		return wspb.Write(ctx, c, packet)
 
 	case *Packet.SC_Broadcast:
@@ -215,8 +206,9 @@ func WriteWS(ctx context.Context, c *websocket.Conn, v interface{}, counter *int
 		if err != nil {
 			return err
 		}
-		return wspb.Write(ctx, c, packet)
+		Packet.Log(gameUID, "SC_Broadcast", v)
 
+		return wspb.Write(ctx, c, packet)
 	}
 
 	return errors.New("not support type")
@@ -242,25 +234,11 @@ func ReadWS(ctx context.Context, c *websocket.Conn, counter *int64) (interface{}
 		err := wspb.Read(ctx, c, csEnter)
 		return csEnter, err
 
-	case Packet.Header_CS_Enter_Ack:
-		csEnterAck := Packet.GetCSEnterAck()
-		err := wspb.Read(ctx, c, csEnterAck)
-		return csEnterAck, err
-
 	case Packet.Header_CS_Broadcast:
 		csBroadcast := Packet.GetCSBroadcast()
 		err := wspb.Read(ctx, c, csBroadcast)
 		return csBroadcast, err
-
-	case Packet.Header_CS_Broadcast_Ack:
-		csBroadcastAck := Packet.GetCSBroadcastAck()
-		err := wspb.Read(ctx, c, csBroadcastAck)
-		return csBroadcastAck, err
-
-	case Packet.Header_SC_Broadcast:
-		scBroadcast := Packet.GetSCBroadcast()
-		err := wspb.Read(ctx, c, scBroadcast)
-		return scBroadcast, err
 	}
+
 	return nil, errors.New("invalid packet")
 }

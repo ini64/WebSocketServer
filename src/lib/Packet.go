@@ -70,3 +70,27 @@ func GetSessionLeave() *SessionLeave {
 func (m *SessionLeave) Release() {
 	SessionLeavePool.Put(m)
 }
+
+//ServerEnter 서버에 로그인 했다고 알리는 다른 서버 메세지
+type ServerEnter struct {
+	ServerID int64
+	GameUID  uint64
+}
+
+//ServerEnterPool ServerEnterPool
+var ServerEnterPool = sync.Pool{
+	// New is called when a new instance is needed
+	New: func() interface{} {
+		return new(ServerEnter)
+	},
+}
+
+// GetServerEnter GetServerEnter
+func GetServerEnter() *ServerEnter {
+	return ServerEnterPool.Get().(*ServerEnter)
+}
+
+//Release Release
+func (v *ServerEnter) Release() {
+	ServerEnterPool.Put(v)
+}

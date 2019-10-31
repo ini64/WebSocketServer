@@ -94,7 +94,7 @@ func Client(wg *sync.WaitGroup, gameUID *uint64, totalRun chan bool, sameTime ch
 
 	ctx, cancel2 := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel2()
-	err = lib.WriteWS(ctx, c, csEnter, nil)
+	err = lib.WriteWS(ctx, c, csEnter, nil, *gameUID)
 	if err != nil {
 		fmt.Println("csEnter Error", err)
 		return
@@ -119,7 +119,7 @@ func Client(wg *sync.WaitGroup, gameUID *uint64, totalRun chan bool, sameTime ch
 
 		ctx, cancel4 := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel4()
-		err = lib.WriteWS(ctx, c, csBroadcast, nil)
+		err = lib.WriteWS(ctx, c, csBroadcast, nil, *gameUID)
 		if err != nil {
 			fmt.Println("CSBoradcast Error", err)
 			return

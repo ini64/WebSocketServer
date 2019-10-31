@@ -1,5 +1,12 @@
 {
   "WSBind": "7000",
-  "RedisAddr": "0.0.0.0:6379",
-  "RedisPassword": ""
+
+  "TokenRedisAddr": "0.0.0.0:6379",
+  "TokenRedisPassword": "",
+  "TokenRedisDB": 0,
+
+  "MonitorRedisAddr": "0.0.0.0:6379",
+  "MonitorRedisPassword": "",
+  "MonitorRedisDB": 0
+
 }

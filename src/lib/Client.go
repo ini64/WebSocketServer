@@ -4,7 +4,6 @@ import (
 	"Packet"
 	"context"
 	"fmt"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,16 +23,10 @@ type Client struct {
 	Conn *websocket.Conn
 
 	//전송자와 싱크를 맞추기 위해
-	SyncSenderStart chan bool
-
-	//전송자와 싱크를 맞추기 위해
-	SyncSenderEnd chan bool
+	SyncSender chan bool
 
 	//세션과 싱크를 맞추기 위해
-	SyncSessionStart chan bool
-
-	//세션과 싱크를 맞추기 위해
-	SyncSessionEnd chan bool
+	SyncSession chan bool
 
 	SendListSize int
 
@@ -63,10 +56,8 @@ var ClientPool = sync.Pool{
 
 //Make 처음 생성시
 func (c *Client) Make() {
-	c.SyncSenderStart = make(chan bool, 2)
-	c.SyncSenderEnd = make(chan bool, 2)
-	c.SyncSessionStart = make(chan bool, 2)
-	c.SyncSessionEnd = make(chan bool, 2)
+	c.SyncSender = make(chan bool)
+	c.SyncSession = make(chan bool)
 	c.SendListSize = 8
 	c.SendList = make(chan interface{}, c.SendListSize)
 }
@@ -78,15 +69,8 @@ func (c *Client) Reset() {
 	c.GameUID = 0
 	c.Transferable = 0
 
-	close(c.SyncSenderStart)
-	close(c.SyncSenderEnd)
-	close(c.SyncSessionStart)
-	close(c.SyncSessionEnd)
-
-	c.SyncSenderStart = make(chan bool, 2)
-	c.SyncSenderEnd = make(chan bool, 2)
-	c.SyncSessionStart = make(chan bool, 2)
-	c.SyncSessionEnd = make(chan bool, 2)
+	c.SyncSender = make(chan bool)
+	c.SyncSession = make(chan bool)
 
 	//닫고 해야 Lock이 안걸림
 	close(c.SendList)
@@ -161,8 +145,10 @@ func (e *EndPoint) NewClient(conn *websocket.Conn, slowy chan bool) {
 		sessionLeave.Client = client
 		e.SessionChannel <- sessionLeave
 
-		<-client.SyncSessionEnd
-		<-client.SyncSenderEnd
+		for range client.SyncSession {
+		}
+		for range client.SyncSender {
+		}
 
 		//자원 정리
 		client.Reset()
@@ -177,16 +163,13 @@ func (e *EndPoint) NewClient(conn *websocket.Conn, slowy chan bool) {
 	//전송자 생성
 	client.Context, client.Cancel = context.WithCancel(context.Background())
 
-	go client.SendWorker(e)
-	<-client.SyncSenderStart
-
 	//타임 아웃 설정
 	firstCtx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
 	v, err := ReadWS(firstCtx, client.Conn, &e.RecvCount)
 	if err != nil {
-		//fmt.Println("invalid packet")
+		close(client.SyncSender)
 		return
 	}
 
@@ -194,41 +177,37 @@ func (e *EndPoint) NewClient(conn *websocket.Conn, slowy chan bool) {
 	case *Packet.CS_Enter:
 		gameUID = uint64(message.GameUID)
 		seq = message.SEQ
-		//Token = message.Token
 	}
 	Packet.Release(v)
 
 	if gameUID == 0 {
+		close(client.SyncSender)
 		return
 	}
 
-	seqKey := fmt.Sprintf("seq:%d", gameUID)
-	val, err := e.RedisClient.Get(seqKey).Result()
-	if err != nil {
+	Packet.Log(gameUID, "CS_Enter", v)
+
+	dbSeq, result := e.Redis.GetSEQ(gameUID)
+	if result == false {
+		close(client.SyncSender)
 		return
 	}
 
-	dbSeq, err := strconv.ParseUint(val, 10, 32)
-	if err != nil {
-		return
-	}
-
-	if uint32(dbSeq) != seq {
+	if dbSeq != seq {
+		close(client.SyncSender)
 		return
 	}
 
 	client.GameUID = gameUID
 
-	//todo 여기서 보내온 데이터의 적합성을 체크해야 하지만 나중에 하자. ase256으로 보낸 gameUID와 Token을 비교
-	// if len(Token) != 0 {
-	// 	return
-	// }
+	go client.SendWorker(e)
+	<-client.SyncSender
 
 	//세션에 등록
 	sessionEnter := GetSessionEnter()
 	sessionEnter.Client = client
 	e.SessionChannel <- sessionEnter
-	<-client.SyncSessionStart
+	<-client.SyncSession
 
 	for {
 		select {
@@ -246,6 +225,9 @@ func (e *EndPoint) NewClient(conn *websocket.Conn, slowy chan bool) {
 
 			switch message := v.(type) {
 			case *Packet.CS_Broadcast:
+
+				Packet.Log(gameUID, "CS_Broadcast", v)
+
 				broadcast := GetBroadcast()
 				broadcast.Client = client
 				broadcast.Message = message.Message
@@ -261,22 +243,24 @@ func (c *Client) SendWorker(e *EndPoint) {
 
 	defer func() {
 		atomic.StoreInt32(&c.Transferable, 0)
-		c.SyncSenderEnd <- true
+		close(c.SyncSender)
 		//fmt.Println("Exit SendWorker", gameUID)
 	}()
 
 	conn := c.Conn
+	gameUID := c.GameUID
 
 	atomic.StoreInt32(&c.Transferable, 1)
-	c.SyncSenderStart <- true
+	c.SyncSender <- true
 
 	for {
 		select {
 		case v := <-c.SendList:
+
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 			defer cancel()
 
-			err := WriteWS(ctx, conn, v, &e.SendCount)
+			err := WriteWS(ctx, conn, v, &e.SendCount, gameUID)
 
 			//보낼 수 없으면 종료
 			if err != nil {
