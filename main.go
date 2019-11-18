@@ -22,13 +22,15 @@ func main() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		endPoint.ListenerWait.Add(2)
+		endPoint.ListenerWait.Add(3)
 
 		go endPoint.WSListener()
 		go endPoint.SessionListener(ctx)
+		go endPoint.RedisListener(ctx)
 
 		<-endPoint.WSListenerMake
 		<-endPoint.SessionListenerMake
+		<-endPoint.RedisListenerMake
 
 		go Monitor(endPoint)
 		endPoint.ListenerWait.Wait()
@@ -44,21 +46,21 @@ func main() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		endPoint.ListenerWait.Add(2)
+		endPoint.ListenerWait.Add(3)
 
 		go endPoint.WSListener()
 		go endPoint.SessionListener(ctx)
+		go endPoint.RedisListener(ctx)
 
 		<-endPoint.WSListenerMake
 		<-endPoint.SessionListenerMake
+		<-endPoint.RedisListenerMake
 
 		go Monitor(endPoint)
 		client.PerfomanceTest()
 		endPoint.ClientWait.Wait()
 		endPoint.ListenerWait.Wait()
-
 	}
-
 }
 
 func Monitor(e *lib.EndPoint) {
@@ -68,7 +70,7 @@ func Monitor(e *lib.EndPoint) {
 
 	for {
 		select {
-		case <-time.After(1 * time.Second):
+		case <-time.After(360 * time.Second):
 
 			recvCount := atomic.LoadInt64(&e.RecvCount)
 			sendCount := atomic.LoadInt64(&e.SendCount)
